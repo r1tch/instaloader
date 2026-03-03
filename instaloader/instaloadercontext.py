@@ -1,3 +1,4 @@
+import httpx
 import json
 import os
 import pickle
@@ -18,6 +19,28 @@ import requests.utils
 
 from .exceptions import *
 
+class Http2Adapter(requests.adapters.BaseAdapter):
+    def __init__(self):
+        self.client = httpx.Client(http2=True)
+
+    def send(self, request, **kwargs):
+        r = self.client.request(
+            request.method,
+            request.url,
+            headers=request.headers,
+            content=request.body,
+        )
+        response = requests.Response()
+        response.status_code = r.status_code
+        response._content = r.content
+        response.headers = r.headers
+        response.url = str(r.url)
+        response.request = request
+        return response
+
+    def close(self):
+        self.client.close()
+
 
 def copy_session(session: requests.Session, request_timeout: Optional[float] = None) -> requests.Session:
     """Duplicates a requests.Session."""
@@ -27,6 +50,7 @@ def copy_session(session: requests.Session, request_timeout: Optional[float] = N
     # Override default timeout behavior.
     # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
     new.request = partial(new.request, timeout=request_timeout)  # type: ignore
+    new.mount("https://", Http2Adapter())
     return new
 
 
